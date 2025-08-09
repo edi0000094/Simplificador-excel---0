@@ -1,49 +1,69 @@
 import streamlit as st
 import pandas as pd
 import io
-import os
+import unicodedata # Biblioteca estándar de Python para manejar caracteres Unicode (acentos)
 
 # --- Título y Descripción de la App Web ---
 st.set_page_config(page_title="Procesador de Archivos", layout="centered")
-st.title("📄 Procesador de Archivos")
+st.title("📄 Procesador Universal de Archivos")
 st.write("""
     Esta aplicación procesa archivos **Excel** (`.xlsx`, `.xls`) y de texto **CSV** (`.csv`). 
-    Extrae columnas específicas y crea la columna **'Fecha Islero'**.
+    Acepta variaciones en los nombres de las columnas (ej. 'Fecha', 'FECHA', 'Aprobacion', 'Aprobación').
 """)
 
 # --- LÓGICA DE PROCESAMIENTO MEJORADA ---
-# La función ahora se llama "procesar_archivo" para reflejar que maneja múltiples tipos.
 def procesar_archivo(archivo_cargado):
     try:
-        # Extrae el nombre del archivo para verificar su extensión
         nombre_archivo = archivo_cargado.name
-        
-        # --- CAMBIO CLAVE: Lógica para leer según el tipo de archivo ---
         if nombre_archivo.endswith('.csv'):
-            # Usa pd.read_csv para archivos de texto, especificando el separador
-            # y pidiendo que convierta la columna "Fecha" directamente a formato de fecha.
-            df = pd.read_csv(archivo_cargado, sep=',', parse_dates=['Fecha'])
+            df = pd.read_csv(archivo_cargado, sep=',')
         elif nombre_archivo.endswith(('.xls', '.xlsx')):
-            # Usa pd.read_excel para archivos de Excel
             df = pd.read_excel(archivo_cargado)
         else:
-            st.error("Formato de archivo no soportado. Por favor, usa .csv, .xls, o .xlsx.")
+            st.error("Formato de archivo no soportado.")
             return None
-
     except Exception as e:
         st.error(f"Error al leer el archivo: {e}")
-        st.info("Sugerencia: Si es un archivo CSV, asegúrate de que el separador sea una coma (,) y que las columnas requeridas existan.")
         return None
 
-    # El resto de la lógica funciona igual porque ya tenemos un DataFrame de pandas
+    # --- CAMBIO CLAVE: Normalizar y renombrar columnas ---
+    # 1. Función para normalizar: convierte a minúsculas y quita acentos.
+    def normalizar_nombre(nombre_col):
+        nombre_col = str(nombre_col) # Asegurarse de que el nombre es un string
+        # unicodedata.normalize descompone los caracteres con acentos (ej. 'á' -> 'a' + '´')
+        # El resto del código filtra y se queda solo con los caracteres base, sin los acentos.
+        s = ''.join(c for c in unicodedata.normalize('NFD', nombre_col) if unicodedata.category(c) != 'Mn')
+        return s.lower().strip() # Convierte a minúsculas y quita espacios extra
+
+    # 2. Define un mapa de los nombres normalizados que buscamos al nombre estándar que queremos.
+    mapa_nombres = {
+        "fecha": "Fecha",
+        "franquicia": "Franquicia",
+        "aprobacion": "Aprobación", # El nombre normalizado no tiene tilde
+        "valor bruto": "Valor Bruto"
+    }
+
+    # 3. Crea el diccionario para renombrar, usando los nombres de columna originales.
+    columnas_a_renombrar = {}
+    for col in df.columns:
+        nombre_norm = normalizar_nombre(col)
+        if nombre_norm in mapa_nombres:
+            # Mapea el nombre original (ej. "FECHA") al nombre estándar (ej. "Fecha")
+            columnas_a_renombrar[col] = mapa_nombres[nombre_norm]
+    
+    # 4. Aplica el renombrado al DataFrame
+    df.rename(columns=columnas_a_renombrar, inplace=True)
+    # --- FIN DEL CAMBIO ---
+
+    # El resto de la lógica ya puede asumir los nombres de columna estándar
     columnas_requeridas = ["Fecha", "Franquicia", "Aprobación", "Valor Bruto"]
     if not all(col in df.columns for col in columnas_requeridas):
-        st.error(f"Error: El archivo no contiene todas las columnas requeridas: {columnas_requeridas}")
+        st.error(f"Error: No se encontraron todas las columnas requeridas en el archivo.")
+        st.info(f"Asegúrate de que tu archivo contenga columnas equivalentes a: {columnas_requeridas}")
         return None
     
     df_seleccion = df[columnas_requeridas].copy()
     
-    # La columna "Fecha" ya fue convertida al leer el archivo, pero lo aseguramos
     df_seleccion['Fecha'] = pd.to_datetime(df_seleccion['Fecha'], errors='coerce')
 
     def calcular_fecha_islero(fecha):
@@ -59,9 +79,8 @@ def procesar_archivo(archivo_cargado):
     columnas_finales = ["Fecha Islero", "Fecha", "Franquicia", "Aprobación", "Valor Bruto"]
     return df_seleccion[columnas_finales]
 
-# --- Interfaz de la Aplicación ---
+# --- Interfaz de la Aplicación (sin cambios) ---
 
-# --- CAMBIO CLAVE: Se añade '.csv' a la lista de tipos de archivo permitidos ---
 uploaded_file = st.file_uploader(
     "👇 Carga tu archivo Excel o CSV aquí",
     type=['xlsx', 'xls', 'csv']
@@ -75,7 +94,6 @@ if uploaded_file is not None:
     
     if st.button("🚀 Procesar Archivo", type="primary"):
         with st.spinner('Procesando, por favor espera...'):
-            # Se llama a la nueva función de lógica
             df_procesado = procesar_archivo(uploaded_file)
 
         if df_procesado is not None:
