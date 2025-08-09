@@ -5,7 +5,7 @@ import unicodedata # Biblioteca estándar de Python para manejar caracteres Unic
 
 # --- Título y Descripción de la App Web ---
 st.set_page_config(page_title="Procesador de Archivos", layout="centered")
-st.title("📄 Procesador Universal de Archivos")
+st.title("📄 Procesador de Archivos")
 st.write("""
     Esta aplicación procesa archivos **Excel** (`.xlsx`, `.xls`) y de texto **CSV** (`.csv`). 
     Acepta variaciones en los nombres de las columnas (ej. 'Fecha', 'FECHA', 'Aprobacion', 'Aprobación').
@@ -64,7 +64,7 @@ def procesar_archivo(archivo_cargado):
     
     df_seleccion = df[columnas_requeridas].copy()
     
-    df_seleccion['Fecha'] = pd.to_datetime(df_seleccion['Fecha'], errors='coerce')
+    df_seleccion['Fecha'] = pd.to_datetime(df_seleccion['Fecha'], dayfirst=True, errors='coerce')
 
     def calcular_fecha_islero(fecha):
         if pd.isna(fecha):
@@ -114,3 +114,4 @@ if uploaded_file is not None:
                 file_name='datos_procesados.xlsx',
                 mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
             )
+
