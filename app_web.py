@@ -1,34 +1,49 @@
 import streamlit as st
 import pandas as pd
 import io
+import os
 
 # --- Título y Descripción de la App Web ---
-st.set_page_config(page_title="Procesador de Fechas Islero", layout="centered")
-st.title("📄 Procesador de Archivos Excel")
+st.set_page_config(page_title="Procesador de Archivos", layout="centered")
+st.title("📄 Procesador de Archivos")
 st.write("""
-    Esta aplicación extrae columnas específicas de un archivo Excel (`.xlsx` o `.xls`) 
-    y crea una nueva columna llamada **'Fecha Islero'**.
-""")
-st.write("""
-    La 'Fecha Islero' corresponde al día anterior si la hora en la columna 'Fecha' 
-    original está entre las 12:00 a.m. y las 6:00 a.m.
+    Esta aplicación procesa archivos **Excel** (`.xlsx`, `.xls`) y de texto **CSV** (`.csv`). 
+    Extrae columnas específicas y crea la columna **'Fecha Islero'**.
 """)
 
-# --- LÓGICA CENTRAL DEL PROCESAMIENTO ---
-# (La misma lógica, pero ahora devuelve el DataFrame procesado o un error)
-def procesar_logica_excel(archivo):
+# --- LÓGICA DE PROCESAMIENTO MEJORADA ---
+# La función ahora se llama "procesar_archivo" para reflejar que maneja múltiples tipos.
+def procesar_archivo(archivo_cargado):
     try:
-        df = pd.read_excel(archivo)
+        # Extrae el nombre del archivo para verificar su extensión
+        nombre_archivo = archivo_cargado.name
+        
+        # --- CAMBIO CLAVE: Lógica para leer según el tipo de archivo ---
+        if nombre_archivo.endswith('.csv'):
+            # Usa pd.read_csv para archivos de texto, especificando el separador
+            # y pidiendo que convierta la columna "Fecha" directamente a formato de fecha.
+            df = pd.read_csv(archivo_cargado, sep=',', parse_dates=['Fecha'])
+        elif nombre_archivo.endswith(('.xls', '.xlsx')):
+            # Usa pd.read_excel para archivos de Excel
+            df = pd.read_excel(archivo_cargado)
+        else:
+            st.error("Formato de archivo no soportado. Por favor, usa .csv, .xls, o .xlsx.")
+            return None
+
     except Exception as e:
         st.error(f"Error al leer el archivo: {e}")
+        st.info("Sugerencia: Si es un archivo CSV, asegúrate de que el separador sea una coma (,) y que las columnas requeridas existan.")
         return None
 
+    # El resto de la lógica funciona igual porque ya tenemos un DataFrame de pandas
     columnas_requeridas = ["Fecha", "Franquicia", "Aprobación", "Valor Bruto"]
     if not all(col in df.columns for col in columnas_requeridas):
         st.error(f"Error: El archivo no contiene todas las columnas requeridas: {columnas_requeridas}")
         return None
     
     df_seleccion = df[columnas_requeridas].copy()
+    
+    # La columna "Fecha" ya fue convertida al leer el archivo, pero lo aseguramos
     df_seleccion['Fecha'] = pd.to_datetime(df_seleccion['Fecha'], errors='coerce')
 
     def calcular_fecha_islero(fecha):
@@ -41,15 +56,15 @@ def procesar_logica_excel(archivo):
 
     df_seleccion['Fecha Islero'] = df_seleccion['Fecha'].apply(calcular_fecha_islero)
     
-    columnas_finales = ["Fecha", "Fecha Islero", "Franquicia", "Aprobación", "Valor Bruto"]
+    columnas_finales = ["Fecha Islero", "Fecha", "Franquicia", "Aprobación", "Valor Bruto"]
     return df_seleccion[columnas_finales]
 
 # --- Interfaz de la Aplicación ---
 
-# 1. Widget para cargar el archivo
+# --- CAMBIO CLAVE: Se añade '.csv' a la lista de tipos de archivo permitidos ---
 uploaded_file = st.file_uploader(
-    "👇 Carga tu archivo de Excel aquí",
-    type=['xlsx', 'xls']
+    "👇 Carga tu archivo Excel o CSV aquí",
+    type=['xlsx', 'xls', 'csv']
 )
 
 st.info("Tu archivo no se guarda en ningún servidor. Todo el procesamiento ocurre de forma segura.", icon="ℹ️")
@@ -58,30 +73,25 @@ st.info("Tu archivo no se guarda en ningún servidor. Todo el procesamiento ocur
 if uploaded_file is not None:
     st.success(f"Archivo cargado: **{uploaded_file.name}**")
     
-    # 2. Botón para iniciar el procesamiento
     if st.button("🚀 Procesar Archivo", type="primary"):
         with st.spinner('Procesando, por favor espera...'):
-            df_procesado = procesar_logica_excel(uploaded_file)
+            # Se llama a la nueva función de lógica
+            df_procesado = procesar_archivo(uploaded_file)
 
         if df_procesado is not None:
             st.success("¡Proceso completado con éxito!")
             
-            # Muestra una vista previa del resultado
             st.write("### Vista previa de los datos procesados:")
             st.dataframe(df_procesado.head())
 
-            # 3. Prepara el archivo para la descarga
-            # Convierte el DataFrame a un archivo Excel en memoria
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
                 df_procesado.to_excel(writer, index=False, sheet_name='Datos Procesados')
             
-            # El método getvalue() obtiene los bytes del archivo en memoria
             datos_excel = output.getvalue()
 
-            # 4. Widget para descargar el archivo
             st.download_button(
-                label="📥 Descargar Archivo Procesado (.xlsx)",
+                label="📥 Descargar Resultado (.xlsx)",
                 data=datos_excel,
                 file_name='datos_procesados.xlsx',
                 mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
